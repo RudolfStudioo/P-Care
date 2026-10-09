@@ -1,0 +1,555 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Performa — P Care</title>
+    <link rel="stylesheet" href="global.css" />
+    <style>
+      .pc-strip {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+      @media (max-width: 700px) {
+        .pc-strip {
+          grid-template-columns: 1fr;
+        }
+      }
+      .pc-cell {
+        padding: 12px 16px;
+      }
+      .pc-cell .lbl {
+        display: block;
+        font-size: 12px;
+      }
+      .pc-cell .val {
+        display: block;
+        margin-top: 2px;
+        font-size: 20px;
+      }
+
+      .pc-chart {
+        width: 100%;
+        height: auto;
+        display: block;
+      }
+      .pc-chart text {
+        fill: var(--muted);
+        font-size: 10px;
+        font-family: inherit;
+      }
+      .pc-chart .grid {
+        stroke: currentColor;
+        opacity: 0.12;
+      }
+      .pc-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 16px;
+        margin-top: 6px;
+        font-size: 12px;
+      }
+      .pc-legend i {
+        display: inline-block;
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        margin-right: 6px;
+      }
+      .pc-foot {
+        margin-top: 6px;
+        font-size: 12px;
+      }
+
+      /* Meter per core, seperti htop */
+      .cores {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 6px 16px;
+        margin-top: 12px;
+      }
+      .core {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 11px;
+      }
+      .core .n {
+        width: 14px;
+      }
+      .core .pct {
+        width: 38px;
+        text-align: right;
+      }
+      .core .bar {
+        flex: 1;
+        height: 8px;
+        border-radius: 2px;
+        background: rgba(128, 128, 128, 0.2);
+        overflow: hidden;
+      }
+      .core .bar i {
+        display: block;
+        height: 100%;
+      }
+    </style>
+  </head>
+  <body data-page="performance" data-title="PERFORMA">
+    <div class="layout">
+      <main class="main">
+        <div class="container">
+          <header class="page-head">
+            <div>
+              <h1>Performa Sistem</h1>
+              <p class="sub">
+                <span id="connIndicator" class="dot bad"></span>
+                <span id="connText">Menyambung ke server…</span>
+              </p>
+            </div>
+            <span id="clock" class="clock mono">--:--:--</span>
+          </header>
+
+          <!-- Ringkasan ala htop -->
+          <section class="pc-strip">
+            <div class="card pc-cell">
+              <span class="lbl muted">Uptime server</span>
+              <span class="val mono" id="stUptime">--:--:--</span>
+            </div>
+            <div class="card pc-cell">
+              <span class="lbl muted">Load average (1 / 5 / 15 menit)</span>
+              <span class="val mono" id="stLoad">—</span>
+            </div>
+            <div class="card pc-cell">
+              <span class="lbl muted">Jumlah core CPU</span>
+              <span class="val mono" id="stCores">—</span>
+            </div>
+          </section>
+
+          <section class="grid-2" id="cards"></section>
+        </div>
+      </main>
+    </div>
+
+    <script src="global.js"></script>
+    <script>
+      PCare.init();
+      const $ = (id) => document.getElementById(id);
+
+      /* =====================================================================
+   WebSocket /ws/performance (1 data per detik). Kunci yang dipakai:
+   cpu_sys, cpu, cpu_cores[], cpu_count, load[], mem_*_mb, ram_mb,
+   swap_*_mb, disk_*, disk_read_kbs, disk_write_kbs, net_up_kbs,
+   net_down_kbs, temp_c, fps, latency_ms, uptime_sec
+===================================================================== */
+
+      const HISTORY = 120; // 120 detik terakhir
+      const WARN = "#e0a030";
+      const BAD = "#d9534f";
+
+      /* ---------- format angka ---------- */
+      const num = (v) => (Number.isInteger(v) ? String(v) : v.toFixed(1));
+      const pct = (v) => Math.round(v * 10) / 10 + "%";
+      const pctAxis = (v) => num(v) + "%";
+      const gb = (v) => v.toFixed(2) + " GB";
+      const gbAxis = (v) => num(v) + " GB";
+      const mb = (v) => Math.round(v) + " MB";
+      const mbAxis = (v) => num(v) + " MB";
+      const rate = (v) =>
+        v >= 1024 ? (v / 1024).toFixed(1) + " MB/s" : Math.round(v) + " KB/s";
+      const rateAxis = (v) =>
+        v >= 1024 ? num(v / 1024) + " MB/s" : num(v) + " KB/s";
+      const val = (x) => (x == null || !isFinite(x) ? null : x);
+
+      function formatUptime(total) {
+        const d = Math.floor(total / 86400);
+        const h = Math.floor((total % 86400) / 3600);
+        const m = Math.floor((total % 3600) / 60);
+        const s = Math.floor(total % 60);
+        const p = (n) => String(n).padStart(2, "0");
+        return (d > 0 ? `${d}h ` : "") + `${p(h)}:${p(m)}:${p(s)}`;
+      }
+
+      /* ---------- skala otomatis ---------- */
+      // Langkah sumbu dibulatkan ke 1 / 2 / 2.5 / 5 / 10 x 10^n
+      function niceStep(x) {
+        const exp = Math.floor(Math.log10(x));
+        const f = x / Math.pow(10, exp);
+        const m = [1, 2, 2.5, 5, 10].find((m) => f <= m + 1e-9);
+        return m * Math.pow(10, exp);
+      }
+
+      /* ---------- grafik garis (SVG) ---------- */
+      class Chart {
+        constructor(svg, series, opts) {
+          this.svg = svg;
+          this.series = series; // [{color:'--ok'}, ...]
+          this.axis = opts.axis;
+          this.base = opts.base || 1; // batas atas awal; membesar sendiri kalau data melewatinya
+          this.min = opts.min || 1e-6;
+          this.data = series.map(() => []);
+        }
+        push(values) {
+          values.forEach((v, i) => {
+            this.data[i].push(v);
+            if (this.data[i].length > HISTORY) this.data[i].shift();
+          });
+          this.draw();
+        }
+        draw() {
+          const W = 420,
+            H = 150,
+            L = 54,
+            R = 8,
+            T = 8,
+            B = 20;
+          let dmax = 0;
+          this.data.forEach((a) =>
+            a.forEach((v) => {
+              if (v != null && v > dmax) dmax = v;
+            }),
+          );
+          // batas atas: pakai base; kalau data melewatinya, ikut membesar
+          let raw = dmax > this.base ? dmax * 1.05 : this.base;
+          raw = Math.max(raw, this.min);
+          const step = niceStep(raw / 4);
+          const top = step * 4;
+
+          const y = (v) => T + (1 - v / top) * (H - T - B);
+          const x = (i, len) =>
+            L + ((HISTORY - len + i) * (W - L - R)) / (HISTORY - 1);
+
+          let s = "";
+          for (let k = 0; k <= 4; k++) {
+            const v = k * step;
+            s += `<line class="grid" x1="${L}" x2="${W - R}" y1="${y(v)}" y2="${y(v)}"/>`;
+            s += `<text x="${L - 6}" y="${y(v) + 3}" text-anchor="end">${this.axis(v)}</text>`;
+          }
+          s += `<text x="${L}" y="${H - 5}" text-anchor="start">-${HISTORY}s</text>`;
+          s += `<text x="${(L + W - R) / 2}" y="${H - 5}" text-anchor="middle">-${HISTORY / 2}s</text>`;
+          s += `<text x="${W - R}" y="${H - 5}" text-anchor="end">sekarang</text>`;
+
+          this.series.forEach((sr, si) => {
+            const arr = this.data[si];
+            const len = arr.length;
+            let d = "";
+            let started = false;
+            let gaps = false;
+            let lastX = 0,
+              lastY = 0,
+              firstX = null;
+            arr.forEach((v, i) => {
+              if (v == null) {
+                started = false;
+                gaps = true;
+                return;
+              }
+              const px = x(i, len),
+                py = y(v);
+              d +=
+                (started ? "L" : "M") +
+                px.toFixed(1) +
+                "," +
+                py.toFixed(1) +
+                " ";
+              started = true;
+              lastX = px;
+              lastY = py;
+              if (firstX === null) firstX = px;
+            });
+            if (!d) return;
+            const col = `var(${sr.color})`;
+            if (si === 0 && !gaps) {
+              s += `<path d="${d}L${lastX.toFixed(1)},${y(0)} L${firstX.toFixed(1)},${y(0)} Z" style="fill:${col};opacity:.12;stroke:none"/>`;
+            }
+            s += `<path d="${d}" style="fill:none;stroke:${col};stroke-width:1.6;stroke-linejoin:round"/>`;
+            s += `<circle cx="${lastX.toFixed(1)}" cy="${lastY.toFixed(1)}" r="2.5" style="fill:${col}"/>`;
+          });
+          this.svg.innerHTML = s;
+        }
+        stats(si) {
+          const a = this.data[si].filter((v) => v != null);
+          if (!a.length) return null;
+          return {
+            min: Math.min(...a),
+            max: Math.max(...a),
+            avg: a.reduce((p, c) => p + c, 0) / a.length,
+          };
+        }
+      }
+
+      /* ---------- definisi kartu ---------- */
+      const CARDS = [
+        {
+          id: "cpu",
+          title: "CPU",
+          base: 100,
+          axis: pctAxis,
+          fmt: pct,
+          series: [
+            { label: "Sistem", color: "--ok", get: (d) => val(d.cpu_sys) },
+            { label: "Aplikasi ini", color: "--btn", get: (d) => val(d.cpu) },
+          ],
+          head: (d) => (d.cpu_sys == null ? "—" : pct(d.cpu_sys)),
+          cores: true,
+        },
+        {
+          id: "mem",
+          title: "Memori (RAM)",
+          base: (d) => (d.mem_total_mb || 0) / 1024,
+          axis: gbAxis,
+          fmt: gb,
+          series: [
+            {
+              label: "Terpakai",
+              color: "--ok",
+              get: (d) => val(d.mem_used_mb / 1024),
+            },
+            {
+              label: "Aplikasi ini",
+              color: "--btn",
+              get: (d) => val(d.ram_mb / 1024),
+            },
+          ],
+          head: (d) =>
+            d.mem_total_mb == null
+              ? "—"
+              : `${gb(d.mem_used_mb / 1024)} / ${gb(d.mem_total_mb / 1024)} · ${pct(d.mem_percent)}`,
+        },
+        {
+          id: "swap",
+          title: "Swap",
+          base: (d) => d.swap_total_mb || 1,
+          axis: mbAxis,
+          fmt: mb,
+          series: [
+            {
+              label: "Terpakai",
+              color: "--ok",
+              get: (d) => val(d.swap_used_mb),
+            },
+          ],
+          head: (d) =>
+            d.swap_total_mb == null
+              ? "—"
+              : d.swap_total_mb > 0
+                ? `${mb(d.swap_used_mb)} / ${mb(d.swap_total_mb)} · ${pct(d.swap_percent)}`
+                : "Tidak ada swap",
+        },
+        {
+          id: "disk",
+          title: "Penyimpanan",
+          base: 100,
+          axis: pctAxis,
+          fmt: pct,
+          series: [
+            {
+              label: "Terpakai",
+              color: "--ok",
+              get: (d) => val(d.disk_percent),
+            },
+          ],
+          head: (d) =>
+            d.disk_percent == null
+              ? "—"
+              : `${d.disk_used_gb.toFixed(1)} / ${d.disk_total_gb.toFixed(1)} GB · ${pct(d.disk_percent)}`,
+        },
+        {
+          id: "dio",
+          title: "Disk I/O",
+          base: 100,
+          axis: rateAxis,
+          fmt: rate,
+          series: [
+            { label: "Baca", color: "--ok", get: (d) => val(d.disk_read_kbs) },
+            {
+              label: "Tulis",
+              color: "--btn",
+              get: (d) => val(d.disk_write_kbs),
+            },
+          ],
+          head: (d) =>
+            d.disk_read_kbs == null
+              ? "—"
+              : `B ${rate(d.disk_read_kbs)} · T ${rate(d.disk_write_kbs)}`,
+        },
+        {
+          id: "net",
+          title: "Jaringan (seluruh server)",
+          base: 100,
+          axis: rateAxis,
+          fmt: rate,
+          series: [
+            { label: "Unduh", color: "--ok", get: (d) => val(d.net_down_kbs) },
+            { label: "Unggah", color: "--btn", get: (d) => val(d.net_up_kbs) },
+          ],
+          head: (d) =>
+            d.net_down_kbs == null
+              ? "—"
+              : `↓ ${rate(d.net_down_kbs)} · ↑ ${rate(d.net_up_kbs)}`,
+        },
+        {
+          id: "fps",
+          title: "FPS Deteksi",
+          base: 30,
+          axis: num,
+          fmt: (v) => v.toFixed(1) + " FPS",
+          series: [{ label: "FPS", color: "--ok", get: (d) => val(d.fps) }],
+          head: (d) => (d.fps == null ? "—" : d.fps.toFixed(1) + " FPS"),
+          extra: (d) =>
+            d.fps > 0 ? ` · frame time ${(1000 / d.fps).toFixed(0)} ms` : "",
+        },
+        {
+          id: "lat",
+          title: "Latensi Inferensi (YOLO)",
+          base: 50,
+          axis: (v) => num(v) + " ms",
+          fmt: (v) => Math.round(v) + " ms",
+          series: [
+            {
+              label: "Latensi",
+              color: "--muted",
+              get: (d) => val(d.latency_ms),
+            },
+          ],
+          head: (d) =>
+            d.latency_ms == null ? "—" : Math.round(d.latency_ms) + " ms",
+        },
+        {
+          id: "temp",
+          title: "Suhu CPU",
+          base: 100,
+          axis: (v) => num(v) + "°",
+          fmt: (v) => v.toFixed(1) + "°C",
+          optional: (d) => d.temp_c != null, // kartu disembunyikan kalau sensor tidak ada
+          series: [{ label: "Suhu", color: "--ok", get: (d) => val(d.temp_c) }],
+          head: (d) => (d.temp_c == null ? "—" : d.temp_c.toFixed(1) + "°C"),
+        },
+      ];
+
+      /* ---------- bangun kartu ---------- */
+      const cardsEl = $("cards");
+      CARDS.forEach((c) => {
+        const art = document.createElement("article");
+        art.className = "card";
+        art.id = "card-" + c.id;
+        if (c.optional) art.hidden = true;
+        art.innerHTML = `
+      <div class="card-head">
+        <h2>${c.title}</h2>
+        <span class="metric" id="${c.id}-val">—</span>
+      </div>
+      <div class="card-body">
+        <svg class="pc-chart" id="${c.id}-svg" viewBox="0 0 420 150" role="img" aria-label="${c.title}"></svg>
+        <div class="pc-legend" id="${c.id}-leg"></div>
+        <div class="pc-foot mono muted" id="${c.id}-foot"></div>
+        ${c.cores ? '<div class="cores" id="cpu-cores"></div>' : ""}
+      </div>`;
+        cardsEl.appendChild(art);
+        c.chart = new Chart($(c.id + "-svg"), c.series, {
+          axis: c.axis,
+          base: typeof c.base === "number" ? c.base : 1,
+        });
+      });
+
+      function coreColor(p) {
+        return p >= 85 ? BAD : p >= 60 ? WARN : "var(--ok)";
+      }
+
+      function updateCard(c, d) {
+        if (c.optional) $("card-" + c.id).hidden = !c.optional(d);
+        if (typeof c.base === "function")
+          c.chart.base = Math.max(c.base(d), 1e-6);
+
+        c.chart.push(c.series.map((s) => s.get(d)));
+        $(c.id + "-val").textContent = c.head(d);
+
+        // legenda (hanya kalau lebih dari satu garis)
+        if (c.series.length > 1) {
+          $(c.id + "-leg").innerHTML = c.series
+            .map((s) => {
+              const v = s.get(d);
+              return `<span><i style="background:var(${s.color})"></i>${s.label}${v == null ? "" : " " + c.fmt(v)}</span>`;
+            })
+            .join("");
+        }
+
+        // ringkasan min / rata-rata / maks (garis pertama)
+        const st = c.chart.stats(0);
+        $(c.id + "-foot").textContent = st
+          ? `min ${c.fmt(st.min)} · rata-rata ${c.fmt(st.avg)} · maks ${c.fmt(st.max)}` +
+            (c.extra ? c.extra(d) : "")
+          : "";
+
+        // meter per core (htop)
+        if (c.cores && Array.isArray(d.cpu_cores)) {
+          $("cpu-cores").innerHTML = d.cpu_cores
+            .map(
+              (p, i) => `
+        <div class="core">
+          <span class="n mono muted">${i}</span>
+          <span class="bar"><i style="width:${Math.min(100, p).toFixed(0)}%;background:${coreColor(p)}"></i></span>
+          <span class="pct mono">${p.toFixed(0)}%</span>
+        </div>`,
+            )
+            .join("");
+        }
+      }
+
+      function updateStrip(d) {
+        $("stUptime").textContent = formatUptime(d.uptime_sec || 0);
+        $("stCores").textContent = d.cpu_count != null ? d.cpu_count : "—";
+        if (Array.isArray(d.load)) {
+          $("stLoad").textContent = d.load.map((v) => v.toFixed(2)).join(" / ");
+          // load 1 menit melebihi jumlah core = antrean CPU mulai menumpuk
+          $("stLoad").style.color =
+            d.cpu_count && d.load[0] > d.cpu_count ? BAD : "";
+        } else {
+          $("stLoad").textContent = "tidak tersedia";
+        }
+      }
+
+      /* ---------- koneksi ---------- */
+      function setConnectionUI(connected) {
+        const cls = connected ? "dot ok live" : "dot bad";
+        $("connIndicator").className = cls;
+        const mobile = $("mobileConnectionStatus");
+        if (mobile) mobile.className = cls;
+        $("connText").textContent = connected
+          ? "Terhubung ke server (memperbarui setiap detik)"
+          : "Terputus dari server — mencoba menyambung ulang…";
+      }
+
+      function onMetrics(d) {
+        updateStrip(d);
+        CARDS.forEach((c) => updateCard(c, d));
+      }
+
+      function connectPerformanceSocket() {
+        const ws = new WebSocket(
+          (location.protocol === "https:" ? "wss://" : "ws://") +
+            location.host +
+            "/ws/performance",
+        );
+        ws.onopen = () => setConnectionUI(true);
+        ws.onmessage = (ev) => {
+          try {
+            onMetrics(JSON.parse(ev.data));
+          } catch (e) {
+            console.error("Format data performa tidak valid", e);
+          }
+        };
+        ws.onclose = () => {
+          setConnectionUI(false);
+          setTimeout(connectPerformanceSocket, 5000);
+        };
+        ws.onerror = () => ws.close();
+      }
+
+      // Warna grafik memakai CSS variable, jadi otomatis ikut tema.
+      window.updateChartColors = () => {};
+      connectPerformanceSocket();
+    </script>
+  </body>
+</html>

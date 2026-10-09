@@ -1,0 +1,648 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Pengaturan — P Care</title>
+    <link rel="stylesheet" href="global.css" />
+    <style>
+      /* Tombol model aktif: pakai warna tema (sebelumnya biru #2563eb, tidak cocok) */
+      .model-btn.active {
+        background: var(--btn);
+        border-color: var(--btn);
+        color: var(--btn-text);
+      }
+      .model-btn.active:hover:not(:disabled) {
+        background: var(--btn-hover);
+        border-color: var(--btn-hover);
+      }
+    </style>
+  </head>
+  <body data-page="settings" data-title="PENGATURAN">
+    <div class="layout">
+      <main class="main">
+        <div class="container narrow">
+          <div class="stack" style="gap: 24px">
+            <header>
+              <h1>Pengaturan Sistem</h1>
+              <p class="sub">
+                Konfigurasi alarm darurat lokal dan perangkat siaga di jaringan
+                WiFi ini.
+              </p>
+            </header>
+
+            <form id="settingsForm" class="stack" style="gap: 24px">
+              <fieldset class="card">
+                <div class="card-head">
+                  <legend class="fieldset-title">
+                    Alarm &amp; Nada Dering
+                  </legend>
+                </div>
+                <div class="card-body lg form-grid">
+                  <div class="field">
+                    <label for="alarmDuration"
+                      >Durasi Alarm Berbunyi (detik)</label
+                    >
+                    <input
+                      type="number"
+                      id="alarmDuration"
+                      class="input"
+                      min="20"
+                      max="900"
+                      value="30"
+                    />
+                    <p class="hint">
+                      Minimal 20 detik, maksimal 900 detik (15 menit).
+                    </p>
+                  </div>
+                  <div class="field">
+                    <label for="notifMode">Mode Notifikasi</label>
+                    <select id="notifMode" class="select">
+                      <option value="getar">Getar Saja</option>
+                      <option value="dering">Dering Saja</option>
+                      <option value="keduanya">Getar + Dering</option>
+                    </select>
+                  </div>
+                </div>
+              </fieldset>
+
+              <fieldset class="card">
+                <div class="card-head">
+                  <legend class="fieldset-title">Deteksi &amp; Kamera</legend>
+                </div>
+                <div class="card-body lg form-grid">
+                  <div class="field">
+                    <label for="resolutionMode">Mode Resolusi</label>
+                    <select id="resolutionMode" class="select">
+                      <option value="lossless">
+                        Lossless — paling akurat, paling berat
+                      </option>
+                      <option value="high">
+                        High — akurat, beban sedang-tinggi
+                      </option>
+                      <option value="medium">
+                        Medium — seimbang (disarankan)
+                      </option>
+                      <option value="low">
+                        Low — paling ringan, akurasi turun
+                      </option>
+                    </select>
+                    <p id="resolutionDesc" class="hint"></p>
+                  </div>
+                  <div class="field">
+                    <label for="streamMode">Mode Stream (ke browser)</label>
+                    <select id="streamMode" class="select">
+                      <option value="low">Low — paling ringan</option>
+                      <option value="medium">Medium — seimbang</option>
+                      <option value="lossless">Lossless — paling tajam</option>
+                    </select>
+                    <p id="streamDesc" class="hint"></p>
+                  </div>
+                  <div class="field">
+                    <label for="fallThreshold"
+                      >Batas Waktu Orang Dianggap Jatuh (detik)</label
+                    >
+                    <input
+                      type="number"
+                      id="fallThreshold"
+                      class="input"
+                      min="1"
+                      max="60"
+                      step="1"
+                      value="7"
+                    />
+                    <p class="hint">
+                      Berapa lama posisi mencurigakan harus bertahan sebelum
+                      alarm dikirim. Minimal 1 detik, maksimal 60 detik (bawaan:
+                      7). Terlalu kecil = sering alarm palsu, terlalu besar =
+                      alarm terlambat.
+                    </p>
+                  </div>
+                </div>
+              </fieldset>
+
+              <fieldset class="card">
+                <div class="card-head">
+                  <legend class="fieldset-title">Model Deteksi (YOLO)</legend>
+                </div>
+                <div class="card-body lg">
+                  <div class="row" style="gap: 8px">
+                    <button
+                      type="button"
+                      class="btn model-btn"
+                      data-model="v8"
+                      style="flex: 1"
+                    >
+                      YOLOv8
+                    </button>
+                    <button
+                      type="button"
+                      class="btn model-btn"
+                      data-model="v26"
+                      style="flex: 1"
+                    >
+                      YOLO26
+                    </button>
+                  </div>
+                  <p id="modelDesc" class="hint" style="margin-top: 10px"></p>
+                  <p
+                    id="modelActive"
+                    class="hint mono"
+                    style="margin-top: 6px"
+                  ></p>
+                </div>
+              </fieldset>
+
+              <fieldset class="card">
+                <div class="card-head">
+                  <legend class="fieldset-title">
+                    IP Pusat (Alamat Server Ini)
+                  </legend>
+                </div>
+                <div class="card-body lg form-grid" style="gap: 12px">
+                  <p class="muted" style="font-size: 13px">
+                    Masukkan alamat IP ini di aplikasi Android tiap HP yang
+                    ingin menerima alarm darurat, agar mereka bisa terhubung ke
+                    jaringan WiFi yang sama.
+                  </p>
+                  <div class="row">
+                    <input
+                      type="text"
+                      id="centralIpDisplay"
+                      class="input mono"
+                      readonly
+                      value="Memuat…"
+                    />
+                    <button
+                      type="button"
+                      id="copyIpBtn"
+                      class="btn"
+                      style="flex-shrink: 0"
+                    >
+                      Salin IP
+                    </button>
+                  </div>
+                  <p
+                    id="copyIpMsg"
+                    class="status-msg ok"
+                    style="font-size: 12px"
+                  >
+                    Tersalin ke clipboard.
+                  </p>
+                </div>
+              </fieldset>
+
+              <fieldset class="card">
+                <div class="card-head">
+                  <legend class="fieldset-title">Perangkat Darurat</legend>
+                  <span id="deviceCountBadge" class="badge"
+                    >0 / 0 Terhubung</span
+                  >
+                </div>
+                <div id="deviceListContainer" class="card-body">
+                  <p class="muted" style="font-size: 13px; font-style: italic">
+                    Memuat perangkat…
+                  </p>
+                </div>
+              </fieldset>
+
+              <div class="row-actions">
+                <button
+                  type="submit"
+                  id="saveBtn"
+                  class="btn btn-primary"
+                  style="padding: 10px 24px; font-size: 14px"
+                >
+                  Simpan Pengaturan
+                </button>
+                <span id="saveStatus" class="status-msg"></span>
+              </div>
+            </form>
+
+            <section class="card">
+              <div class="card-head"><h2>Ganti Password Admin</h2></div>
+              <form
+                id="passwordForm"
+                class="card-body lg form-grid"
+                style="gap: 16px"
+              >
+                <div class="field">
+                  <label for="oldPassword">Password Lama</label>
+                  <input
+                    type="password"
+                    id="oldPassword"
+                    class="input"
+                    required
+                    autocomplete="current-password"
+                  />
+                </div>
+                <div class="field">
+                  <label for="newPassword">Password Baru</label>
+                  <input
+                    type="password"
+                    id="newPassword"
+                    class="input"
+                    required
+                    minlength="4"
+                    autocomplete="new-password"
+                  />
+                </div>
+                <div class="field">
+                  <label for="confirmPassword">Konfirmasi Password Baru</label>
+                  <input
+                    type="password"
+                    id="confirmPassword"
+                    class="input"
+                    required
+                    minlength="4"
+                    autocomplete="new-password"
+                  />
+                </div>
+                <p class="hint">
+                  Akun default: <span class="mono">admin / admin</span>. Segera
+                  ganti demi keamanan.
+                </p>
+                <div class="row-actions">
+                  <button
+                    type="submit"
+                    id="passwordSaveBtn"
+                    class="btn btn-danger"
+                    style="padding: 10px 24px; font-size: 14px"
+                  >
+                    Ganti Password
+                  </button>
+                  <span id="passwordStatus" class="status-msg"></span>
+                </div>
+              </form>
+            </section>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <script src="global.js"></script>
+    <script>
+      PCare.init();
+
+      const $ = (id) => document.getElementById(id);
+
+      function flash(el, text, ok, ms = 3500) {
+        el.textContent = text;
+        el.className = "status-msg " + (ok ? "ok" : "bad");
+        el.style.opacity = "1";
+        setTimeout(() => {
+          el.style.opacity = "0";
+        }, ms);
+      }
+
+      // Pesan error dari FastAPI bisa berupa string (HTTPException) atau
+      // array (validasi 422). Ubah jadi teks yang bisa dibaca.
+      function errText(body, fallback) {
+        const d = body && body.detail;
+        if (!d) return fallback;
+        if (typeof d === "string") return d;
+        if (Array.isArray(d))
+          return d
+            .map((x) => {
+              const field = Array.isArray(x.loc) ? x.loc[x.loc.length - 1] : "";
+              return (field ? field + ": " : "") + (x.msg || "tidak valid");
+            })
+            .join("; ");
+        return fallback;
+      }
+
+      /* ---------- IP Pusat ---------- */
+      async function renderCentralIp() {
+        try {
+          const res = await fetch("/api/server-ip");
+          if (!res.ok) throw new Error();
+          const ip = (await res.json()).ip;
+          // 127.0.0.1 = server tidak menemukan jaringan; pakai alamat yang
+          // sedang dipakai browser supaya tidak menyesatkan
+          $("centralIpDisplay").value =
+            ip && ip !== "127.0.0.1" ? ip : location.hostname || "—";
+        } catch (e) {
+          $("centralIpDisplay").value = location.hostname || "—";
+        }
+      }
+      renderCentralIp();
+
+      $("copyIpBtn").addEventListener("click", async () => {
+        const msg = $("copyIpMsg"),
+          input = $("centralIpDisplay");
+        try {
+          await navigator.clipboard.writeText(input.value);
+        } catch (e) {
+          input.select();
+          document.execCommand("copy");
+        }
+        msg.style.opacity = "1";
+        setTimeout(() => {
+          msg.style.opacity = "0";
+        }, 2000);
+      });
+
+      /* ---------- Model YOLO (2 tombol horizontal) ---------- */
+      let selectedModel = "v26";
+      let serverModel = null, // model yang benar-benar aktif di server
+        serverLoading = false,
+        serverModelError = "",
+        serverRunning = true;
+
+      const MODEL_NAME = { v8: "YOLOv8", v26: "YOLO26" };
+      const MODEL_DESC = {
+        v8: "YOLOv8n-pose — model nano klasik, ringan dan stabil, cocok sebagai cadangan.",
+        v26: "YOLO26n-pose — lebih baru, NMS-free dan dioptimasi untuk perangkat edge seperti Raspberry Pi. Umumnya lebih ringan & cepat dibanding YOLOv8 di akurasi yang sepadan.",
+      };
+
+      function renderModelButtons() {
+        document.querySelectorAll(".model-btn").forEach((b) => {
+          b.classList.toggle("active", b.dataset.model === selectedModel);
+        });
+        $("modelDesc").textContent = MODEL_DESC[selectedModel] || "";
+        renderModelStatus();
+      }
+
+      function renderModelStatus() {
+        const el = $("modelActive");
+        if (!serverModel) {
+          el.textContent = "";
+          return;
+        }
+        let t = serverLoading
+          ? "Memuat model baru… (bisa beberapa detik di Raspberry Pi)"
+          : `Aktif di server: ${MODEL_NAME[serverModel] || serverModel}`;
+        if (!serverLoading && serverModelError) t += ` — ⚠ ${serverModelError}`;
+        if (!serverLoading && selectedModel !== serverModel) {
+          t += serverRunning
+            ? " · pilihan baru belum diterapkan, tekan Simpan Pengaturan."
+            : " · akan diterapkan setelah Simpan dan kamera menyala.";
+        }
+        el.textContent = t;
+      }
+
+      async function pollModelStatus() {
+        try {
+          const res = await fetch("/api/status");
+          if (!res.ok) return;
+          const s = await res.json();
+          serverModel = s.model;
+          serverLoading = !!s.model_loading;
+          serverModelError = s.model_error || "";
+          serverRunning = s.status === "running";
+          renderModelStatus();
+        } catch (e) {}
+      }
+
+      document.querySelectorAll(".model-btn").forEach((b) =>
+        b.addEventListener("click", () => {
+          selectedModel = b.dataset.model;
+          renderModelButtons();
+        }),
+      );
+
+      /* ---------- Keterangan mode resolusi ---------- */
+      const RES_DESC = {
+        lossless:
+          "Lossless — resolusi & kualitas tertinggi (1280×720, input AI besar). Deteksi paling akurat, terutama untuk orang yang jauh atau kecil di layar. Konsekuensi: paling berat — CPU/RAM tinggi, latensi naik, FPS bisa turun di perangkat lemah.",
+        high: "High — 1280×720. Akurat dan detail, cocok untuk PC/laptop yang cukup kuat. Beban lebih ringan dari Lossless.",
+        medium:
+          "Medium — 640×480. Keseimbangan akurasi dan kecepatan; pilihan aman untuk kebanyakan perangkat.",
+        low: "Low — 320×240. Paling ringan dan cepat, cocok untuk perangkat lemah. Akurasi turun, terutama jika orang jauh dari kamera.",
+      };
+      function showResolutionDesc() {
+        $("resolutionDesc").textContent =
+          RES_DESC[$("resolutionMode").value] || "";
+      }
+      $("resolutionMode").addEventListener("change", showResolutionDesc);
+      showResolutionDesc();
+
+      /* ---------- Keterangan mode stream ---------- */
+      const STREAM_DESC = {
+        low: "Low — lebar 480 px, kualitas 50. Paling hemat CPU dan WiFi, cocok untuk Raspberry Pi. Gambar agak buram.",
+        medium:
+          "Medium — lebar 800 px, kualitas 70. Cukup jelas dan beban sedang. Disarankan.",
+        lossless:
+          "Lossless — lebar 1280 px, kualitas 100. Paling tajam, tapi encode JPEG dan bandwidth jauh lebih berat. Bisa membuat stream tersendat di Pi.",
+      };
+      function showStreamDesc() {
+        $("streamDesc").textContent = STREAM_DESC[$("streamMode").value] || "";
+      }
+      $("streamMode").addEventListener("change", showStreamDesc);
+      showStreamDesc();
+
+      /* ---------- Pengaturan alarm (GET/PUT /api/settings) ---------- */
+      async function fetchAlarmSettings() {
+        try {
+          const res = await fetch("/api/settings");
+          if (!res.ok) throw new Error();
+          const d = await res.json();
+          if (d.alarm_duration) $("alarmDuration").value = d.alarm_duration;
+          if (d.notifMode) $("notifMode").value = d.notifMode;
+          if (d.fall_threshold)
+            $("fallThreshold").value = parseFloat(d.fall_threshold);
+          if (d.resolution_mode) $("resolutionMode").value = d.resolution_mode;
+          if (d.stream_mode) $("streamMode").value = d.stream_mode;
+          if (d.model_choice) selectedModel = d.model_choice;
+          renderModelButtons();
+          showResolutionDesc();
+          showStreamDesc();
+        } catch (err) {
+          console.error(err);
+        }
+      }
+      fetchAlarmSettings().then(pollModelStatus);
+      setInterval(pollModelStatus, 2000);
+
+      $("settingsForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const duration = parseInt($("alarmDuration").value, 10);
+        if (isNaN(duration) || duration < 20 || duration > 900) {
+          alert("Durasi alarm harus antara 20 dan 900 detik.");
+          return;
+        }
+        const threshold = parseFloat($("fallThreshold").value);
+        if (isNaN(threshold) || threshold < 1 || threshold > 60) {
+          alert("Batas waktu jatuh harus antara 1 dan 60 detik.");
+          return;
+        }
+        const btn = $("saveBtn"),
+          status = $("saveStatus");
+        btn.textContent = "Menyimpan…";
+        btn.disabled = true;
+        status.style.opacity = "0";
+        try {
+          const res = await fetch("/api/settings", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              alarm_duration: duration,
+              notifMode: $("notifMode").value,
+              fall_threshold: threshold,
+              resolution_mode: $("resolutionMode").value,
+              stream_mode: $("streamMode").value,
+              model_choice: selectedModel,
+            }),
+          });
+          if (res.ok) {
+            flash(status, "✔ Pengaturan tersimpan.", true);
+            pollModelStatus();
+          } else {
+            const body = await res.json().catch(() => ({}));
+            flash(
+              status,
+              "✘ " + errText(body, "Gagal menyimpan pengaturan."),
+              false,
+            );
+          }
+        } catch (err) {
+          flash(status, "✘ Tidak dapat menghubungi server.", false);
+        }
+        btn.textContent = "Simpan Pengaturan";
+        btn.disabled = false;
+      });
+
+      /* =====================================================================
+   PERANGKAT DARURAT (GET /api/devices tiap 2 detik)
+   Test getar: POST /api/devices/{id}/test · Hapus: DELETE /api/devices/{id}
+===================================================================== */
+      const esc = PCare.escapeHtml;
+
+      async function fetchConnectedDevices() {
+        try {
+          const res = await fetch("/api/devices");
+          if (!res.ok) throw new Error();
+          const data = await res.json();
+          $("deviceCountBadge").textContent =
+            `${data.total} / ${data.max_allowed} Terhubung`;
+          const box = $("deviceListContainer");
+
+          if (!data.devices.length) {
+            box.innerHTML =
+              '<p class="muted" style="font-size:13px;font-style:italic">Belum ada HP darurat yang terhubung di jaringan WiFi ini.</p>';
+            return;
+          }
+          box.innerHTML = data.devices
+            .map(
+              (dev) => `
+      <div class="device">
+        <div class="device-info">
+          <span class="dot ${dev.online ? "ok live" : "off"}"></span>
+          <div style="min-width:0">
+            <p>${esc(dev.name)}</p>
+            <p>IP: ${esc(dev.ip)} · terakhir: ${esc(dev.connected_at)}</p>
+          </div>
+        </div>
+        <div class="device-actions">
+          <span class="badge ${dev.online ? "ok" : ""}">${dev.online ? "ONLINE" : "OFFLINE"}</span>
+          <button type="button" class="btn btn-sm test-btn" data-id="${esc(dev.id)}" data-name="${esc(dev.name)}">Test Getar</button>
+          <button type="button" class="btn btn-sm btn-danger del-btn" data-id="${esc(dev.id)}" data-name="${esc(dev.name)}">Hapus</button>
+        </div>
+      </div>`,
+            )
+            .join("");
+
+          box
+            .querySelectorAll(".test-btn")
+            .forEach((b) =>
+              b.addEventListener("click", () =>
+                testVibrate(b.dataset.id, b.dataset.name, b),
+              ),
+            );
+          box
+            .querySelectorAll(".del-btn")
+            .forEach((b) =>
+              b.addEventListener("click", () =>
+                removeDevice(b.dataset.id, b.dataset.name),
+              ),
+            );
+        } catch (e) {
+          console.error(e);
+          $("deviceListContainer").innerHTML =
+            '<p class="muted" style="font-size:13px">Gagal memuat daftar perangkat dari server.</p>';
+        }
+      }
+
+      async function testVibrate(id, name, btn) {
+        const original = btn.textContent;
+        btn.textContent = "Mengirim…";
+        btn.disabled = true;
+        let msg = "";
+        try {
+          const res = await fetch(`/api/devices/${id}/test`, {
+            method: "POST",
+          });
+          if (res.ok) btn.textContent = "✔ Terkirim";
+          else {
+            btn.textContent = "✘ Gagal";
+            const body = await res.json().catch(() => ({}));
+            msg = errText(body, "");
+          }
+        } catch (e) {
+          btn.textContent = "✘ Gagal";
+        }
+        if (msg) alert(msg); // mis. "Pastikan HP menyala, satu WiFi, dan app dibuka."
+        setTimeout(() => {
+          btn.textContent = original;
+          btn.disabled = false;
+        }, 2000);
+      }
+
+      async function removeDevice(id, name) {
+        if (!confirm(`Hapus perangkat "${name}" dari daftar siaga?`)) return;
+        try {
+          await fetch(`/api/devices/${id}`, { method: "DELETE" });
+          fetchConnectedDevices();
+        } catch (e) {
+          console.error(e);
+        }
+      }
+
+      setInterval(fetchConnectedDevices, 2000);
+      fetchConnectedDevices();
+
+      /* ---------- Ganti password admin (PUT /api/auth/password) ---------- */
+      $("passwordForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const status = $("passwordStatus"),
+          btn = $("passwordSaveBtn");
+        const oldPassword = $("oldPassword").value,
+          newPassword = $("newPassword").value;
+
+        if (newPassword !== $("confirmPassword").value) {
+          flash(status, "✘ Konfirmasi password baru tidak cocok.", false);
+          return;
+        }
+        btn.textContent = "Menyimpan…";
+        btn.disabled = true;
+        status.style.opacity = "0";
+        try {
+          const res = await fetch("/api/auth/password", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              username: "admin",
+              old_password: oldPassword,
+              new_password: newPassword,
+            }),
+          });
+          if (res.ok) {
+            flash(status, "✔ Password berhasil diperbarui.", true);
+            $("passwordForm").reset();
+          } else {
+            const body = await res.json().catch(() => ({}));
+            flash(
+              status,
+              "✘ " + errText(body, "Gagal mengganti password."),
+              false,
+            );
+          }
+        } catch (err) {
+          flash(status, "✘ Tidak dapat menghubungi server.", false);
+        }
+        btn.textContent = "Ganti Password";
+        btn.disabled = false;
+      });
+    </script>
+  </body>
+</html>

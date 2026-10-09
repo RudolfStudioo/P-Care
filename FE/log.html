@@ -1,0 +1,727 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Log — P Care</title>
+    <link rel="stylesheet" href="global.css" />
+    <style>
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 12px;
+        margin-bottom: 16px;
+      }
+      .stat {
+        padding: 14px 16px;
+      }
+      .stat-num {
+        display: block;
+        font-size: 28px;
+        line-height: 1.1;
+      }
+      .stat-label {
+        display: block;
+        margin-top: 4px;
+        font-size: 12px;
+      }
+      .chart-card {
+        margin-bottom: 16px;
+      }
+      .legend {
+        display: flex;
+        gap: 16px;
+        font-size: 12px;
+      }
+      .legend i {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        margin-right: 6px;
+        vertical-align: -1px;
+      }
+      #chart {
+        width: 100%;
+        height: auto;
+        display: block;
+      }
+      #chart text {
+        fill: currentColor;
+        opacity: 0.6;
+        font-size: 11px;
+        font-family: inherit;
+      }
+      #chart .grid {
+        stroke: currentColor;
+        opacity: 0.12;
+      }
+      #chart .hit:hover {
+        fill: currentColor;
+        fill-opacity: 0.06;
+      }
+      .modal {
+        position: fixed;
+        inset: 0;
+        z-index: 100;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+        background: rgba(0, 0, 0, 0.6);
+      }
+      .modal.hidden {
+        display: none;
+      }
+      .modal-box {
+        width: 100%;
+        max-width: 460px;
+      }
+      .modal-box .card-body {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      .warn-box {
+        border: 1px solid #d9534f;
+        border-radius: 6px;
+        padding: 10px 12px;
+        font-size: 13px;
+      }
+      .confirm-phrase {
+        user-select: none;
+        font-weight: 600;
+      }
+      .day-row td {
+        padding: 10px 16px;
+        background: rgba(128, 128, 128, 0.1);
+        font-size: 13px;
+      }
+      .day-row .day-title {
+        font-weight: 600;
+      }
+      .day-row .day-sum {
+        float: right;
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body data-page="log" data-title="LOG">
+    <div class="layout">
+      <main class="main">
+        <div class="container">
+          <header class="page-head">
+            <div>
+              <h1>Log Kejadian</h1>
+              <p class="sub">
+                <span id="connIndicator" class="dot ok live"></span>
+                <span id="connText">Memuat log…</span>
+              </p>
+            </div>
+            <span id="clock" class="clock mono">--:--:--</span>
+          </header>
+
+          <!-- Total 30 hari terakhir -->
+          <section class="stats">
+            <div class="card stat">
+              <span class="stat-num mono" id="stDanger">0</span>
+              <span class="stat-label muted"
+                >Jatuh terdeteksi (alarm) · 30 hari terakhir</span
+              >
+            </div>
+            <div class="card stat">
+              <span class="stat-num mono" id="stPotential">0</span>
+              <span class="stat-label muted"
+                >Potensi jatuh · 30 hari terakhir</span
+              >
+            </div>
+          </section>
+
+          <!-- Kurva per hari -->
+          <section class="card chart-card">
+            <div class="card-head">
+              <h2>Kejadian per hari (30 hari terakhir)</h2>
+              <div class="legend">
+                <span><i style="background: #d9534f"></i>Alarm</span>
+                <span><i style="background: #e0a030"></i>Potensi jatuh</span>
+              </div>
+            </div>
+            <div class="card-body">
+              <svg
+                id="chart"
+                viewBox="0 0 800 240"
+                role="img"
+                aria-label="Grafik kejadian per hari"
+              ></svg>
+              <p id="chartEmpty" class="muted hidden" style="font-size: 12px">
+                Tidak ada kejadian dalam 30 hari terakhir.
+              </p>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="toolbar">
+              <input
+                id="searchInput"
+                type="search"
+                class="input"
+                placeholder="Cari kejadian atau keterangan…"
+                aria-label="Cari log"
+              />
+              <select id="levelFilter" class="select" aria-label="Filter level">
+                <option value="all">Semua level</option>
+                <option value="danger">Darurat</option>
+                <option value="warn">Peringatan</option>
+                <option value="info">Info</option>
+              </select>
+              <span class="spacer"></span>
+              <span
+                id="resetMsg"
+                class="status-msg"
+                style="font-size: 12px; opacity: 0"
+              ></span>
+              <span id="countLabel" class="mono muted" style="font-size: 12px"
+                >0 entri</span
+              >
+              <button type="button" id="exportBtn" class="btn btn-sm">
+                Ekspor CSV
+              </button>
+              <button type="button" id="resetBtn" class="btn btn-sm btn-danger">
+                Reset log
+              </button>
+              <button
+                type="button"
+                id="refreshBtn"
+                class="btn btn-primary btn-sm"
+              >
+                Segarkan
+              </button>
+            </div>
+
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Jam</th>
+                    <th>Level</th>
+                    <th>Kejadian</th>
+                    <th>Keterangan</th>
+                  </tr>
+                </thead>
+                <tbody id="logBody"></tbody>
+              </table>
+            </div>
+            <p id="emptyMsg" class="empty hidden">Belum ada log yang cocok.</p>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <!-- Konfirmasi reset log -->
+    <div
+      id="resetModal"
+      class="modal hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="resetTitle"
+    >
+      <div class="card modal-box">
+        <div class="card-head"><h2 id="resetTitle">Reset log kejadian</h2></div>
+        <div class="card-body">
+          <div class="field">
+            <label for="resetScope">Yang dihapus</label>
+            <select id="resetScope" class="select">
+              <option value="all">Semua log</option>
+              <option value="30">Hanya yang lebih lama dari 30 hari</option>
+              <option value="7">Hanya yang lebih lama dari 7 hari</option>
+            </select>
+          </div>
+
+          <div class="warn-box" id="resetPreview">Menghitung…</div>
+
+          <p class="muted" style="font-size: 13px">
+            Penghapusan bersifat permanen dan tidak bisa dibatalkan. Satu
+            catatan "Log dibersihkan" (siapa dan berapa entri) akan tetap
+            tersimpan sebagai jejak.
+          </p>
+
+          <button
+            type="button"
+            id="resetBackup"
+            class="btn btn-sm"
+            style="align-self: flex-start"
+          >
+            Unduh cadangan CSV dulu
+          </button>
+
+          <div class="field">
+            <label for="resetConfirmInput"
+              >Ketik
+              <span class="mono confirm-phrase" id="resetPhrase"></span> untuk
+              melanjutkan</label
+            >
+            <input
+              id="resetConfirmInput"
+              type="text"
+              class="input mono"
+              autocomplete="off"
+              autocapitalize="characters"
+              spellcheck="false"
+            />
+          </div>
+
+          <p
+            id="resetErr"
+            class="status-msg bad"
+            style="font-size: 12px; opacity: 0"
+          ></p>
+
+          <div class="row-actions">
+            <button type="button" id="resetCancel" class="btn">Batal</button>
+            <button type="button" id="resetGo" class="btn btn-danger" disabled>
+              Hapus permanen
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="global.js"></script>
+    <script>
+      PCare.init();
+
+      /* =====================================================================
+   LOG KEJADIAN — GET /api/logs?limit=1000
+   Waktu dari server berformat "YYYY-MM-DD HH:MM:SS". Kurva dan total
+   dihitung dari log yang dimuat (maks. 1000 entri terakhir).
+===================================================================== */
+      const $ = (id) => document.getElementById(id);
+      const esc = PCare.escapeHtml;
+      let allLogs = [];
+      let visibleRows = [];
+
+      const MONTHS = [
+        "Januari",
+        "Februari",
+        "Maret",
+        "April",
+        "Mei",
+        "Juni",
+        "Juli",
+        "Agustus",
+        "September",
+        "Oktober",
+        "November",
+        "Desember",
+      ];
+      const MONTHS_SHORT = [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "Mei",
+        "Jun",
+        "Jul",
+        "Agu",
+        "Sep",
+        "Okt",
+        "Nov",
+        "Des",
+      ];
+      const DAYS = [
+        "Minggu",
+        "Senin",
+        "Selasa",
+        "Rabu",
+        "Kamis",
+        "Jumat",
+        "Sabtu",
+      ];
+      const LEVEL_LABEL = {
+        danger: "DARURAT",
+        warn: "PERINGATAN",
+        info: "INFO",
+      };
+      const C_ALARM = "#d9534f";
+      const C_POT = "#e0a030";
+
+      function levelOf(raw) {
+        const v = String(raw || "").toLowerCase();
+        if (/fall|jatuh|danger|darurat|error|critical|alarm/.test(v))
+          return "danger";
+        if (/warn|peringatan/.test(v)) return "warn";
+        return "info";
+      }
+
+      function kindOf(event, level) {
+        if (level === "danger") return "alarm";
+        if (/potensi/i.test(event)) return "potential";
+        return "other";
+      }
+
+      function normalize(l) {
+        const time = String(l.time || l.timestamp || l.created_at || "");
+        const level = levelOf(l.level || l.type);
+        const event = l.message || l.event || l.type || "";
+        return {
+          date: time.slice(0, 10), // YYYY-MM-DD
+          clock: time.slice(11, 19), // HH:MM:SS
+          time,
+          level,
+          kind: kindOf(event, level),
+          event,
+          detail: l.detail || l.description || "",
+        };
+      }
+
+      const pad = (n) => String(n).padStart(2, "0");
+      const ymd = (d) =>
+        `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+      function dateLabel(dateStr) {
+        const [y, m, d] = dateStr.split("-").map(Number);
+        if (!y) return "Tanggal tidak diketahui";
+        const dt = new Date(y, m - 1, d);
+        let t = `${DAYS[dt.getDay()]}, ${d} ${MONTHS[m - 1]} ${y}`;
+        const now = new Date();
+        const yest = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate() - 1,
+        );
+        if (dateStr === ymd(now)) t = "Hari ini · " + t;
+        else if (dateStr === ymd(yest)) t = "Kemarin · " + t;
+        return t;
+      }
+
+      const count = (rows, kind) => rows.filter((l) => l.kind === kind).length;
+
+      /* ---------- Kurva 30 hari ---------- */
+      // Garis mulus (Catmull-Rom -> bezier), titik kontrol dijepit supaya
+      // kurva tidak melewati batas antar dua titik (tidak jadi negatif).
+      function smoothPath(pts) {
+        if (pts.length < 2) return "";
+        let d = `M${pts[0][0].toFixed(1)},${pts[0][1].toFixed(1)}`;
+        for (let i = 0; i < pts.length - 1; i++) {
+          const p0 = pts[i - 1] || pts[i];
+          const p1 = pts[i];
+          const p2 = pts[i + 1];
+          const p3 = pts[i + 2] || p2;
+          const lo = Math.min(p1[1], p2[1]);
+          const hi = Math.max(p1[1], p2[1]);
+          const clamp = (v) => Math.min(hi, Math.max(lo, v));
+          const c1x = p1[0] + (p2[0] - p0[0]) / 6;
+          const c1y = clamp(p1[1] + (p2[1] - p0[1]) / 6);
+          const c2x = p2[0] - (p3[0] - p1[0]) / 6;
+          const c2y = clamp(p2[1] - (p3[1] - p1[1]) / 6);
+          d += ` C${c1x.toFixed(1)},${c1y.toFixed(1)} ${c2x.toFixed(1)},${c2y.toFixed(1)} ${p2[0].toFixed(1)},${p2[1].toFixed(1)}`;
+        }
+        return d;
+      }
+
+      function renderChart() {
+        const N = 30;
+        const now = new Date();
+        const days = [];
+        for (let i = N - 1; i >= 0; i--) {
+          const d = new Date(
+            now.getFullYear(),
+            now.getMonth(),
+            now.getDate() - i,
+          );
+          days.push({ date: ymd(d), d, alarm: 0, pot: 0 });
+        }
+        const idx = new Map(days.map((x, i) => [x.date, i]));
+        allLogs.forEach((l) => {
+          const i = idx.get(l.date);
+          if (i === undefined) return;
+          if (l.kind === "alarm") days[i].alarm++;
+          else if (l.kind === "potential") days[i].pot++;
+        });
+
+        const totalA = days.reduce((s, x) => s + x.alarm, 0);
+        const totalP = days.reduce((s, x) => s + x.pot, 0);
+        $("stDanger").textContent = totalA;
+        $("stPotential").textContent = totalP;
+        $("chartEmpty").classList.toggle("hidden", totalA + totalP > 0);
+
+        const W = 800,
+          H = 240;
+        const L = 34,
+          R = 12,
+          T = 12,
+          B = 28;
+        const maxV = Math.max(1, ...days.map((x) => Math.max(x.alarm, x.pot)));
+        const step = Math.max(1, Math.ceil(maxV / 4));
+        const yMax = step * Math.ceil(maxV / step);
+        const xs = (i) => L + (i * (W - L - R)) / (N - 1);
+        const ys = (v) => T + (1 - v / yMax) * (H - T - B);
+        const colW = (W - L - R) / (N - 1);
+
+        let s = "";
+        // garis bantu + label sumbu Y
+        for (let v = 0; v <= yMax; v += step) {
+          s += `<line class="grid" x1="${L}" x2="${W - R}" y1="${ys(v)}" y2="${ys(v)}"/>`;
+          s += `<text x="${L - 6}" y="${ys(v) + 4}" text-anchor="end">${v}</text>`;
+        }
+        // label sumbu X
+        days.forEach((x, i) => {
+          if (i % 5 === 0 || i === N - 1) {
+            s += `<text x="${xs(i)}" y="${H - 8}" text-anchor="middle">${x.d.getDate()} ${MONTHS_SHORT[x.d.getMonth()]}</text>`;
+          }
+        });
+        // dua kurva
+        const series = [
+          { key: "alarm", color: C_ALARM },
+          { key: "pot", color: C_POT },
+        ];
+        series.forEach((sr) => {
+          const pts = days.map((x, i) => [xs(i), ys(x[sr.key])]);
+          s += `<path d="${smoothPath(pts)}" fill="none" stroke="${sr.color}" stroke-width="2" stroke-linecap="round"/>`;
+          days.forEach((x, i) => {
+            if (x[sr.key] > 0)
+              s += `<circle cx="${xs(i)}" cy="${ys(x[sr.key])}" r="3" fill="${sr.color}"/>`;
+          });
+        });
+        // area sorot + tooltip per hari
+        days.forEach((x, i) => {
+          const tip = `${x.d.getDate()} ${MONTHS[x.d.getMonth()]} ${x.d.getFullYear()}: ${x.alarm} alarm, ${x.pot} potensi jatuh`;
+          s += `<rect class="hit" x="${xs(i) - colW / 2}" y="${T}" width="${colW}" height="${H - T - B}" fill="transparent"><title>${tip}</title></rect>`;
+        });
+        $("chart").innerHTML = s;
+      }
+
+      /* ---------- Daftar per tanggal ---------- */
+      function renderList() {
+        const q = $("searchInput").value.trim().toLowerCase();
+        const lv = $("levelFilter").value;
+
+        visibleRows = allLogs.filter(
+          (l) =>
+            (lv === "all" || l.level === lv) &&
+            (!q || (l.event + " " + l.detail).toLowerCase().includes(q)),
+        );
+
+        const groups = new Map();
+        visibleRows.forEach((l) => {
+          if (!groups.has(l.date)) groups.set(l.date, []);
+          groups.get(l.date).push(l);
+        });
+
+        let html = "";
+        groups.forEach((rows, date) => {
+          const a = count(rows, "alarm");
+          const p = count(rows, "potential");
+          const parts = [];
+          if (a) parts.push(`${a} alarm`);
+          if (p) parts.push(`${p} potensi jatuh`);
+          parts.push(`${rows.length} kejadian`);
+          html += `
+    <tr class="day-row">
+      <td colspan="4">
+        <span class="day-title">${esc(dateLabel(date))}</span>
+        <span class="day-sum muted">${esc(parts.join(" · "))}</span>
+      </td>
+    </tr>`;
+          rows.forEach((l) => {
+            html += `
+    <tr>
+      <td class="time">${esc(l.clock)}</td>
+      <td><span class="badge ${l.level === "info" ? "" : l.level}">${LEVEL_LABEL[l.level]}</span></td>
+      <td>${esc(l.event)}</td>
+      <td class="muted">${esc(l.detail) || "—"}</td>
+    </tr>`;
+          });
+        });
+
+        $("logBody").innerHTML = html;
+        $("emptyMsg").classList.toggle("hidden", visibleRows.length > 0);
+        $("countLabel").textContent = `${visibleRows.length} entri`;
+      }
+
+      async function loadLogs() {
+        try {
+          const res = await fetch("/api/logs?limit=1000");
+          if (!res.ok) throw new Error();
+          const data = await res.json();
+          allLogs = (Array.isArray(data) ? data : data.logs || []).map(
+            normalize,
+          );
+          $("connIndicator").className = "dot ok live";
+          $("connText").textContent =
+            "Terhubung ke server (memperbarui setiap 5 detik)";
+          renderChart();
+          renderList();
+        } catch (e) {
+          $("connIndicator").className = "dot bad";
+          $("connText").textContent =
+            "Gagal memuat log — periksa koneksi backend";
+          if (!allLogs.length) {
+            renderChart();
+            renderList();
+          }
+        }
+      }
+
+      // Ekspor apa yang sedang tampil (sesuai level/pencarian)
+      function exportCsv(rows = visibleRows, filename = "pcare-log.csv") {
+        const q = (s) => '"' + String(s).replace(/"/g, '""') + '"';
+        const lines = ["Waktu,Level,Kejadian,Keterangan"].concat(
+          rows.map((l) =>
+            [l.time, LEVEL_LABEL[l.level], l.event, l.detail].map(q).join(","),
+          ),
+        );
+        const url = URL.createObjectURL(
+          new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" }),
+        );
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+
+      $("searchInput").addEventListener("input", renderList);
+      $("levelFilter").addEventListener("change", renderList);
+      $("refreshBtn").addEventListener("click", loadLogs);
+      $("exportBtn").addEventListener("click", () => exportCsv());
+
+      /* ---------- Reset log (dengan konfirmasi ketik) ---------- */
+      // Kalimat harus sama dengan yang diperiksa server di POST /api/logs/clear
+      const PHRASE_ALL = "HAPUS SEMUA LOG";
+      const PHRASE_OLD = "HAPUS LOG LAMA";
+      let resetCount = 0;
+      let resetBusy = false;
+      let previewToken = 0;
+      let msgTimer = null;
+
+      function flashMsg(text, ok) {
+        const el = $("resetMsg");
+        el.textContent = text;
+        el.className = "status-msg " + (ok ? "ok" : "bad");
+        el.style.opacity = "1";
+        clearTimeout(msgTimer);
+        msgTimer = setTimeout(() => (el.style.opacity = "0"), 5000);
+      }
+
+      function resetDays() {
+        const v = $("resetScope").value;
+        return v === "all" ? null : Number(v);
+      }
+      function resetPhrase() {
+        return resetDays() === null ? PHRASE_ALL : PHRASE_OLD;
+      }
+      function syncResetBtn() {
+        $("resetGo").disabled =
+          resetBusy ||
+          resetCount < 1 ||
+          $("resetConfirmInput").value !== resetPhrase();
+      }
+
+      async function refreshResetPreview() {
+        const token = ++previewToken;
+        const days = resetDays();
+        $("resetPhrase").textContent = resetPhrase();
+        $("resetConfirmInput").value = "";
+        $("resetErr").style.opacity = "0";
+        $("resetPreview").textContent = "Menghitung…";
+        resetCount = 0;
+        syncResetBtn();
+        try {
+          const url =
+            "/api/logs/count" +
+            (days === null ? "" : `?older_than_days=${days}`);
+          const res = await fetch(url);
+          if (!res.ok) throw new Error();
+          const n = (await res.json()).count;
+          if (token !== previewToken) return; // pilihan sudah berganti
+          resetCount = n;
+          $("resetPreview").textContent =
+            n > 0
+              ? `${n} entri log akan dihapus permanen.`
+              : "Tidak ada log yang cocok dengan pilihan ini.";
+        } catch (e) {
+          if (token !== previewToken) return;
+          $("resetPreview").textContent =
+            "Gagal menghitung jumlah log. Periksa koneksi ke server.";
+        }
+        syncResetBtn();
+      }
+
+      function openReset() {
+        $("resetScope").value = "all";
+        $("resetModal").classList.remove("hidden");
+        refreshResetPreview();
+        setTimeout(() => $("resetConfirmInput").focus(), 0);
+      }
+      function closeReset() {
+        if (resetBusy) return;
+        $("resetModal").classList.add("hidden");
+        $("resetConfirmInput").value = "";
+        $("resetBtn").focus();
+      }
+
+      async function doReset() {
+        if ($("resetGo").disabled) return;
+        resetBusy = true;
+        syncResetBtn();
+        $("resetGo").textContent = "Menghapus…";
+        $("resetErr").style.opacity = "0";
+        try {
+          const res = await fetch("/api/logs/clear", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              confirm: $("resetConfirmInput").value,
+              older_than_days: resetDays(),
+            }),
+          });
+          const body = await res.json().catch(() => ({}));
+          if (!res.ok) {
+            const d = body && body.detail;
+            $("resetErr").textContent =
+              "✘ " + (typeof d === "string" ? d : "Gagal menghapus log.");
+            $("resetErr").style.opacity = "1";
+          } else {
+            resetBusy = false;
+            closeReset();
+            flashMsg(`✔ ${body.deleted} log dihapus.`, true);
+            await loadLogs();
+          }
+        } catch (e) {
+          $("resetErr").textContent = "✘ Tidak dapat menghubungi server.";
+          $("resetErr").style.opacity = "1";
+        }
+        resetBusy = false;
+        $("resetGo").textContent = "Hapus permanen";
+        syncResetBtn();
+      }
+
+      $("resetBtn").addEventListener("click", openReset);
+      $("resetCancel").addEventListener("click", closeReset);
+      $("resetScope").addEventListener("change", refreshResetPreview);
+      $("resetConfirmInput").addEventListener("input", syncResetBtn);
+      $("resetConfirmInput").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          doReset();
+        }
+      });
+      $("resetGo").addEventListener("click", doReset);
+      $("resetBackup").addEventListener("click", () =>
+        exportCsv(allLogs, "pcare-log-cadangan.csv"),
+      );
+      // klik area gelap di luar kotak = batal
+      $("resetModal").addEventListener("click", (e) => {
+        if (e.target === $("resetModal")) closeReset();
+      });
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && !$("resetModal").classList.contains("hidden"))
+          closeReset();
+      });
+
+      loadLogs();
+      setInterval(loadLogs, 5000);
+    </script>
+  </body>
+</html>

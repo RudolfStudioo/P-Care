@@ -1,0 +1,792 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kamera — P Care</title>
+    <link rel="stylesheet" href="global.css" />
+    <style>
+      .video {
+        position: relative;
+        overflow: hidden;
+        touch-action: none;
+      }
+      .video.zoomed {
+        cursor: grab;
+      }
+      .video.zoomed:active {
+        cursor: grabbing;
+      }
+      #videoStream {
+        transform-origin: center center;
+        will-change: transform;
+        user-select: none;
+        -webkit-user-drag: none;
+      }
+      .zoom-ctrl {
+        position: absolute;
+        right: 10px;
+        bottom: 10px;
+        z-index: 5;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px;
+        border-radius: 10px;
+        background: rgba(0, 0, 0, 0.55);
+      }
+      .zoom-ctrl button {
+        min-width: 32px;
+        height: 32px;
+        padding: 0 8px;
+        border: 0;
+        border-radius: 8px;
+        background: transparent;
+        color: #fff;
+        font-size: 16px;
+        cursor: pointer;
+      }
+      .zoom-ctrl button:hover {
+        background: rgba(255, 255, 255, 0.18);
+      }
+      .zoom-ctrl .zl {
+        min-width: 44px;
+        font-size: 12px;
+        font-family: monospace;
+      }
+      #videoStream.hidden ~ .zoom-ctrl {
+        display: none;
+      }
+      .video:fullscreen,
+      .video.pseudo-fs {
+        width: 100vw !important;
+        height: 100vh !important;
+        max-height: none !important;
+        aspect-ratio: auto !important;
+        border-radius: 0 !important;
+        background: #000;
+      }
+      .video.pseudo-fs {
+        position: fixed !important;
+        inset: 0;
+        z-index: 9999;
+        height: 100dvh !important;
+      }
+      .video:fullscreen #videoStream,
+      .video.pseudo-fs #videoStream {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+      }
+    </style>
+  </head>
+  <body data-page="camera" data-title="KAMERA">
+    <div class="layout">
+      <main class="main">
+        <div class="container">
+          <div class="page-head">
+            <div>
+              <h1>P Care Camera</h1>
+            </div>
+            <span id="clock" class="clock mono">--:--:--</span>
+          </div>
+
+          <div class="grid-cam">
+            <!-- ===== PANEL KAMERA ===== -->
+            <section class="card">
+              <div class="card-head">
+                <div class="row" style="align-items: center">
+                  <span id="statusDot" class="dot"></span>
+                  <span
+                    id="statusText"
+                    class="mono muted"
+                    style="font-size: 12px"
+                    >Kamera tidak aktif</span
+                  >
+                </div>
+                <div class="meta">
+                  <span id="resLabel">— × —</span>
+                  <span id="fpsLabel">0 fps</span>
+                </div>
+              </div>
+
+              <div class="video" id="videoBox">
+                <img id="videoStream" class="hidden" alt="Live Stream YOLO" />
+
+                <div class="zoom-ctrl">
+                  <button
+                    id="zoomOutBtn"
+                    title="Perkecil"
+                    aria-label="Perkecil"
+                  >
+                    −
+                  </button>
+                  <button id="zoomResetBtn" class="zl" title="Reset zoom">
+                    100%
+                  </button>
+                  <button id="zoomInBtn" title="Perbesar" aria-label="Perbesar">
+                    +
+                  </button>
+                  <button
+                    id="fsBtn"
+                    title="Layar penuh"
+                    aria-label="Layar penuh"
+                  >
+                    ⛶
+                  </button>
+                </div>
+
+                <div id="emptyState" class="overlay">
+                  <svg
+                    class="icon"
+                    style="width: 44px; height: 44px; opacity: 0.7"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.3"
+                  >
+                    <path
+                      d="M4 8a2 2 0 0 1 2-2h2l1.2-1.6A2 2 0 0 1 10.8 3.6h2.4a2 2 0 0 1 1.6.8L16 6h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8Z"
+                    />
+                    <circle cx="12" cy="13" r="3.2" />
+                  </svg>
+                  <div>
+                    <p id="emptyTitle">Menghubungkan ke kamera…</p>
+                    <p id="emptySub" class="small">
+                      Kamera menyala otomatis dan akan tersambung ulang sendiri
+                      kalau terputus.
+                    </p>
+                  </div>
+                  <button id="startCamBtn" class="btn btn-primary hidden">
+                    Nyalakan kamera
+                  </button>
+                </div>
+
+                <div id="cameraErrorState" class="overlay err-bg hidden">
+                  <svg
+                    class="icon"
+                    style="width: 36px; height: 36px; color: var(--danger)"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                  >
+                    <path
+                      d="M12 9v4M12 17h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"
+                    />
+                  </svg>
+                  <p
+                    id="cameraErrorText"
+                    style="font-size: 13px; max-width: 320px"
+                  >
+                    Kamera gagal dibuka. Periksa perangkat kamera pada server.
+                  </p>
+                  <button id="retryCamBtn" class="btn btn-sm">Coba lagi</button>
+                </div>
+
+                <div id="detectBadge" class="video-badge hidden"></div>
+              </div>
+
+              <div class="card-foot">
+                <button id="stopCamBtn" class="btn" disabled>
+                  Matikan kamera
+                </button>
+                <p>Live Mode | No Recording</p>
+              </div>
+            </section>
+
+            <!-- ===== PANEL KANAN ===== -->
+            <div class="stack">
+              <section class="card">
+                <div class="card-head" style="display: block">
+                  <h2>Filter tampilan</h2>
+                  <p>
+                    Hanya mengubah tampilan, deteksi di server tidak
+                    terpengaruh.
+                  </p>
+                </div>
+                <div class="filter-grid">
+                  <button data-filter="normal" class="filter-btn is-active">
+                    <span
+                      class="swatch"
+                      style="
+                        background: linear-gradient(135deg, #9c4a2e, #3f4b3b);
+                      "
+                    ></span
+                    >Normal
+                  </button>
+                  <button data-filter="invert" class="filter-btn">
+                    <span
+                      class="swatch"
+                      style="
+                        background: linear-gradient(135deg, #2b74d1, #c94f6a);
+                        filter: invert(1);
+                      "
+                    ></span
+                    >Inversi warna
+                  </button>
+                  <button data-filter="grayscale" class="filter-btn">
+                    <span
+                      class="swatch"
+                      style="background: linear-gradient(135deg, #fff, #000)"
+                    ></span
+                    >Hitam putih
+                  </button>
+                </div>
+              </section>
+
+              <section class="card">
+                <div class="card-head" style="display: block">
+                  <h2>Notifikasi darurat</h2>
+                  <p>Cara perangkat ini memberi tahu saat jatuh terdeteksi.</p>
+                </div>
+                <div class="card-body option-list">
+                  <label class="option">
+                    <input type="radio" name="notifMode" value="getar" />
+                    <div>
+                      <p>Getar saja</p>
+                      <p class="hint">Senyap, cocok untuk malam hari</p>
+                    </div>
+                  </label>
+                  <label class="option">
+                    <input type="radio" name="notifMode" value="dering" />
+                    <div>
+                      <p>Dering saja</p>
+                      <p class="hint">Suara alarm penuh</p>
+                    </div>
+                  </label>
+                  <label class="option">
+                    <input
+                      type="radio"
+                      name="notifMode"
+                      value="keduanya"
+                      checked
+                    />
+                    <div>
+                      <p>Getar dan dering</p>
+                      <p class="hint">Direkomendasikan untuk kondisi darurat</p>
+                    </div>
+                  </label>
+                </div>
+                <div style="padding: 0 16px 16px">
+                  <p
+                    id="notifSaveState"
+                    class="mono muted"
+                    style="font-size: 11px"
+                  >
+                    Memuat pengaturan…
+                  </p>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <script src="global.js"></script>
+    <script>
+      PCare.init();
+
+      /* =====================================================================
+   STREAMING VIDEO DARI BACKEND PYTHON (YOLO) — via /ws/video
+   Kamera di server menyala terus. Halaman ini otomatis tersambung saat
+   dibuka, dan menyambung ulang sendiri kalau WebSocket / kamera terputus.
+   Frame dikirim sebagai JPEG BINARY (bukan base64/JSON).
+===================================================================== */
+      const $ = (id) => document.getElementById(id);
+      const videoStream = $("videoStream"),
+        emptyState = $("emptyState"),
+        emptyTitle = $("emptyTitle"),
+        emptySub = $("emptySub"),
+        cameraErrorState = $("cameraErrorState"),
+        cameraErrorText = $("cameraErrorText"),
+        startCamBtn = $("startCamBtn"),
+        stopCamBtn = $("stopCamBtn"),
+        retryCamBtn = $("retryCamBtn"),
+        statusDot = $("statusDot"),
+        statusText = $("statusText"),
+        resLabel = $("resLabel"),
+        fpsLabel = $("fpsLabel"),
+        detectBadge = $("detectBadge");
+
+      const RECONNECT_MS = 2000; // jeda sebelum sambung ulang WebSocket
+      const STALL_MS = 6000; // tidak ada frame selama ini = dianggap macet
+
+      let wsVideo = null,
+        manualStop = false, // true kalau user menekan "Matikan kamera"
+        reconnectTimer = null,
+        lastFrameAt = 0,
+        lastFrameTime = performance.now(),
+        frameCount = 0,
+        currentFilter = "normal",
+        currentUrl = null, // object URL frame yang sedang tampil
+        pendingBlob = null, // frame terbaru yang menunggu giliran tampil
+        decoding = false;
+
+      function setStatus(active, text) {
+        statusDot.className = "dot" + (active ? " ok live" : "");
+        statusText.textContent =
+          text || (active ? "Kamera aktif" : "Kamera tidak aktif");
+      }
+      function applyFilter() {
+        videoStream.style.filter =
+          currentFilter === "invert"
+            ? "invert(1)"
+            : currentFilter === "grayscale"
+              ? "grayscale(1)"
+              : "none";
+      }
+      function showEmptyState(title, sub, showBtn) {
+        emptyTitle.textContent = title || "Kamera belum diaktifkan";
+        emptySub.textContent =
+          sub ||
+          "Nyalakan untuk mulai memantau dan menerima video dari server deteksi.";
+        startCamBtn.classList.toggle("hidden", !showBtn);
+        emptyState.classList.remove("hidden");
+        cameraErrorState.classList.add("hidden");
+        videoStream.classList.add("hidden");
+        detectBadge.classList.add("hidden");
+      }
+      function showErrorState(message) {
+        emptyState.classList.add("hidden");
+        cameraErrorState.classList.remove("hidden");
+        videoStream.classList.add("hidden");
+        detectBadge.classList.add("hidden");
+        cameraErrorText.textContent =
+          message ||
+          "Kamera gagal dibuka. Periksa perangkat kamera pada server.";
+      }
+
+      /* Tampilkan frame satu per satu. Kalau frame baru datang saat browser
+         masih menggambar frame sebelumnya, yang lama dibuang (tidak antre). */
+      function showNextFrame() {
+        if (decoding || !pendingBlob) return;
+        decoding = true;
+        const url = URL.createObjectURL(pendingBlob);
+        pendingBlob = null;
+        const done = () => {
+          if (currentUrl) URL.revokeObjectURL(currentUrl);
+          currentUrl = url;
+          decoding = false;
+          frameCount++;
+          const now = performance.now();
+          if (now - lastFrameTime >= 1000) {
+            fpsLabel.textContent = `${frameCount} fps`;
+            frameCount = 0;
+            lastFrameTime = now;
+          }
+          showNextFrame();
+        };
+        videoStream.onload = done;
+        videoStream.onerror = () => {
+          URL.revokeObjectURL(url);
+          decoding = false;
+          showNextFrame();
+        };
+        videoStream.src = url;
+      }
+
+      function resetFrameState() {
+        pendingBlob = null;
+        decoding = false;
+        if (currentUrl) {
+          URL.revokeObjectURL(currentUrl);
+          currentUrl = null;
+        }
+      }
+
+      /* ---------- Sambungan WebSocket video (auto-reconnect) ---------- */
+      function scheduleReconnect() {
+        if (manualStop || reconnectTimer) return;
+        reconnectTimer = setTimeout(() => {
+          reconnectTimer = null;
+          connectStream();
+        }, RECONNECT_MS);
+      }
+
+      function connectStream() {
+        if (manualStop) return;
+        if (wsVideo) {
+          wsVideo.onclose = wsVideo.onerror = wsVideo.onmessage = null;
+          try {
+            wsVideo.close();
+          } catch (e) {}
+          wsVideo = null;
+        }
+        resetFrameState();
+        lastFrameAt = performance.now();
+        stopCamBtn.disabled = false;
+        startCamBtn.disabled = true;
+        if (videoStream.classList.contains("hidden")) {
+          showEmptyState(
+            "Menghubungkan ke kamera…",
+            "Kamera menyala otomatis dan akan tersambung ulang sendiri kalau terputus.",
+            false,
+          );
+          setStatus(false, "Menghubungkan…");
+        }
+
+        const ws = new WebSocket(
+          (location.protocol === "https:" ? "wss://" : "ws://") +
+            location.host +
+            "/ws/video",
+        );
+        ws.binaryType = "blob";
+        wsVideo = ws;
+
+        ws.onmessage = (event) => {
+          if (!(event.data instanceof Blob)) return; // abaikan pesan teks
+          lastFrameAt = performance.now();
+          if (videoStream.classList.contains("hidden")) {
+            emptyState.classList.add("hidden");
+            cameraErrorState.classList.add("hidden");
+            videoStream.classList.remove("hidden");
+            detectBadge.classList.remove("hidden");
+            resLabel.textContent = "Server Stream";
+            setStatus(true);
+            applyFilter();
+          }
+          pendingBlob = event.data; // simpan hanya yang terbaru
+          showNextFrame();
+        };
+        ws.onclose = () => {
+          if (wsVideo !== ws) return;
+          wsVideo = null;
+          if (manualStop) return;
+          setStatus(false, "Terputus — menyambung ulang…");
+          fpsLabel.textContent = "0 fps";
+          scheduleReconnect();
+        };
+        ws.onerror = () => {
+          try {
+            ws.close();
+          } catch (e) {}
+        };
+      }
+
+      /* Pengawas: kalau socket "hidup" tapi tidak ada frame (kamera server
+         sedang menyambung ulang / macet), tampilkan status & paksa sambung ulang. */
+      setInterval(async () => {
+        if (manualStop) return;
+        const stalled = performance.now() - lastFrameAt > STALL_MS;
+        if (!stalled) return;
+        try {
+          const res = await fetch("/api/status");
+          if (res.status === 401) {
+            location.href = "/login";
+            return;
+          }
+          const s = await res.json();
+          if (s.status === "stopped") {
+            // server berhenti (mis. dimatikan dari halaman lain)
+            manualStop = true;
+            handleStoppedUI();
+            return;
+          }
+          if (!s.camera_ok) {
+            setStatus(false, "Kamera server menyambung ulang…");
+            showEmptyState(
+              "Kamera sedang menyambung ulang…",
+              "Pastikan kabel kamera terpasang. Akan pulih otomatis.",
+              false,
+            );
+          }
+        } catch (e) {
+          setStatus(false, "Server tidak terjangkau — mencoba lagi…");
+        }
+        connectStream();
+      }, 3000);
+
+      function handleStoppedUI() {
+        if (wsVideo) {
+          wsVideo.onclose = wsVideo.onerror = wsVideo.onmessage = null;
+          try {
+            wsVideo.close();
+          } catch (e) {}
+          wsVideo = null;
+        }
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+        resetFrameState();
+        videoStream.removeAttribute("src");
+        showEmptyState(
+          "Kamera dimatikan",
+          "Nyalakan untuk mulai memantau dan menerima video dari server deteksi.",
+          true,
+        );
+        setStatus(false);
+        startCamBtn.disabled = false;
+        stopCamBtn.disabled = true;
+        resLabel.textContent = "— × —";
+        fpsLabel.textContent = "0 fps";
+      }
+
+      async function startCamera() {
+        manualStop = false;
+        cameraErrorState.classList.add("hidden");
+        startCamBtn.disabled = true;
+        resLabel.textContent = "Menghubungkan kamera...";
+
+        try {
+          const res = await fetch("/api/start", { method: "POST" });
+          if (!res.ok) {
+            const errBody = await res.json().catch(() => ({}));
+            showErrorState(
+              errBody.detail || "Server menolak permintaan menyalakan kamera.",
+            );
+            startCamBtn.disabled = false;
+            resLabel.textContent = "— × —";
+            return;
+          }
+        } catch (err) {
+          showErrorState(
+            "Tidak dapat menghubungi server backend. Pastikan server berjalan.",
+          );
+          startCamBtn.disabled = false;
+          resLabel.textContent = "— × —";
+          return;
+        }
+        connectStream();
+      }
+
+      async function stopCamera() {
+        manualStop = true;
+        try {
+          await fetch("/api/stop", { method: "POST" });
+        } catch (err) {}
+        handleStoppedUI();
+      }
+
+      /* ---------- Zoom, geser, cubit & layar penuh ---------- */
+      const videoBox = $("videoBox"),
+        zoomLabel = $("zoomResetBtn"),
+        MAX_ZOOM = 6;
+      const zoom = { s: 1, x: 0, y: 0 };
+
+      function applyZoom() {
+        const r = videoBox.getBoundingClientRect();
+        const mx = ((zoom.s - 1) * r.width) / 2,
+          my = ((zoom.s - 1) * r.height) / 2;
+        zoom.x = Math.max(-mx, Math.min(mx, zoom.x));
+        zoom.y = Math.max(-my, Math.min(my, zoom.y));
+        videoStream.style.transform = `translate(${zoom.x}px, ${zoom.y}px) scale(${zoom.s})`;
+        zoomLabel.textContent = Math.round(zoom.s * 100) + "%";
+        videoBox.classList.toggle("zoomed", zoom.s > 1);
+      }
+      // zoom ke skala baru, berpusat di titik (cx, cy) relatif ke tengah kotak
+      function zoomTo(ns, cx = 0, cy = 0) {
+        ns = Math.max(1, Math.min(MAX_ZOOM, ns));
+        const k = ns / zoom.s;
+        zoom.x = cx - (cx - zoom.x) * k;
+        zoom.y = cy - (cy - zoom.y) * k;
+        zoom.s = ns;
+        if (ns === 1) zoom.x = zoom.y = 0;
+        applyZoom();
+      }
+      function boxPoint(e) {
+        const r = videoBox.getBoundingClientRect();
+        return [
+          e.clientX - (r.left + r.width / 2),
+          e.clientY - (r.top + r.height / 2),
+        ];
+      }
+
+      videoBox.addEventListener(
+        "wheel",
+        (e) => {
+          if (videoStream.classList.contains("hidden")) return;
+          e.preventDefault();
+          const [cx, cy] = boxPoint(e);
+          zoomTo(zoom.s * (e.deltaY < 0 ? 1.15 : 1 / 1.15), cx, cy);
+        },
+        { passive: false },
+      );
+      videoBox.addEventListener("dblclick", (e) => {
+        if (e.target.closest(".zoom-ctrl")) return;
+        if (videoStream.classList.contains("hidden")) return;
+        const [cx, cy] = boxPoint(e);
+        zoom.s > 1 ? zoomTo(1) : zoomTo(2.5, cx, cy);
+      });
+
+      const pointers = new Map();
+      let lastDist = 0;
+      videoBox.addEventListener("pointerdown", (e) => {
+        if (e.target.closest(".zoom-ctrl")) return;
+        pointers.set(e.pointerId, e);
+        videoBox.setPointerCapture(e.pointerId);
+        lastDist = 0;
+      });
+      videoBox.addEventListener("pointermove", (e) => {
+        if (!pointers.has(e.pointerId)) return;
+        const prev = pointers.get(e.pointerId);
+        pointers.set(e.pointerId, e);
+        if (pointers.size === 2) {
+          const [a, b] = [...pointers.values()];
+          const dist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+          if (lastDist) {
+            const mid = {
+              clientX: (a.clientX + b.clientX) / 2,
+              clientY: (a.clientY + b.clientY) / 2,
+            };
+            const [cx, cy] = boxPoint(mid);
+            zoomTo(zoom.s * (dist / lastDist), cx, cy);
+          }
+          lastDist = dist;
+        } else if (pointers.size === 1 && zoom.s > 1) {
+          zoom.x += e.clientX - prev.clientX;
+          zoom.y += e.clientY - prev.clientY;
+          applyZoom();
+        }
+      });
+      const dropPointer = (e) => {
+        pointers.delete(e.pointerId);
+        lastDist = 0;
+      };
+      videoBox.addEventListener("pointerup", dropPointer);
+      videoBox.addEventListener("pointercancel", dropPointer);
+
+      $("zoomInBtn").addEventListener("click", () => zoomTo(zoom.s * 1.4));
+      $("zoomOutBtn").addEventListener("click", () => zoomTo(zoom.s / 1.4));
+      zoomLabel.addEventListener("click", () => zoomTo(1));
+
+      /* Layar penuh. Kalau browser tidak mendukung (mis. iPhone), pakai
+         mode "layar penuh semu" lewat CSS. */
+      function inFullscreen() {
+        return (
+          document.fullscreenElement === videoBox ||
+          videoBox.classList.contains("pseudo-fs")
+        );
+      }
+      async function toggleFullscreen() {
+        if (inFullscreen()) {
+          videoBox.classList.remove("pseudo-fs");
+          if (document.fullscreenElement) await document.exitFullscreen();
+          applyZoom();
+          return;
+        }
+        const req =
+          videoBox.requestFullscreen || videoBox.webkitRequestFullscreen;
+        try {
+          if (!req) throw new Error("no-fs");
+          await req.call(videoBox);
+        } catch (e) {
+          videoBox.classList.add("pseudo-fs");
+          applyZoom();
+        }
+      }
+      $("fsBtn").addEventListener("click", toggleFullscreen);
+      document.addEventListener("fullscreenchange", () =>
+        setTimeout(applyZoom, 50),
+      );
+      window.addEventListener("resize", applyZoom);
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && videoBox.classList.contains("pseudo-fs")) {
+          videoBox.classList.remove("pseudo-fs");
+          applyZoom();
+        }
+      });
+
+      startCamBtn.addEventListener("click", startCamera);
+      stopCamBtn.addEventListener("click", stopCamera);
+      retryCamBtn.addEventListener("click", startCamera);
+
+      /* Tab kembali aktif (mis. HP baru dibuka lagi): pastikan tersambung */
+      document.addEventListener("visibilitychange", () => {
+        if (
+          !document.hidden &&
+          !manualStop &&
+          (!wsVideo || wsVideo.readyState > 1)
+        )
+          connectStream();
+      });
+
+      /* Saat halaman dibuka: kalau server sudah menyala (default), langsung
+         sambung. Kalau sempat dimatikan manual, tampilkan tombol nyalakan. */
+      async function autoConnect() {
+        try {
+          const res = await fetch("/api/status");
+          if (res.ok) {
+            const s = await res.json();
+            if (s.status === "stopped") {
+              manualStop = true;
+              handleStoppedUI();
+              return;
+            }
+          }
+        } catch (e) {}
+        connectStream();
+      }
+
+      /* ---------- Filter tampilan (key: displayFilter) ---------- */
+      function setActiveFilterButton(name) {
+        document
+          .querySelectorAll(".filter-btn")
+          .forEach((b) =>
+            b.classList.toggle("is-active", b.dataset.filter === name),
+          );
+      }
+      document.querySelectorAll(".filter-btn").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          currentFilter = btn.dataset.filter;
+          setActiveFilterButton(currentFilter);
+          applyFilter();
+          await PCare.saveSettingToServer("displayFilter", currentFilter);
+        });
+      });
+
+      /* ---------- Notifikasi darurat (key: notifMode) ---------- */
+      const notifSaveState = $("notifSaveState");
+      let pendingSave = false;
+      window.addEventListener("beforeunload", (e) => {
+        if (pendingSave) {
+          e.preventDefault();
+          e.returnValue = "";
+        }
+      });
+      document.querySelectorAll('input[name="notifMode"]').forEach((r) => {
+        r.addEventListener("change", async () => {
+          pendingSave = true;
+          notifSaveState.textContent = "Menyimpan…";
+          const ok = await PCare.saveSettingToServer("notifMode", r.value);
+          pendingSave = false;
+          notifSaveState.textContent = ok
+            ? "Tersimpan"
+            : "Gagal tersimpan — periksa koneksi ke server";
+          if (ok)
+            setTimeout(
+              () =>
+                (notifSaveState.textContent = "Tersimpan ke basis data lokal"),
+              1500,
+            );
+        });
+      });
+
+      /* ---------- Muat pengaturan dari server ---------- */
+      async function loadSettingsFromServer() {
+        try {
+          const res = await fetch("/api/settings");
+          if (!res.ok) throw new Error();
+          const s = await res.json();
+          if (s.displayFilter) {
+            currentFilter = s.displayFilter;
+            setActiveFilterButton(currentFilter);
+            applyFilter();
+          }
+          if (s.notifMode) {
+            const r = document.querySelector(
+              `input[name="notifMode"][value="${s.notifMode}"]`,
+            );
+            if (r) r.checked = true;
+          }
+          notifSaveState.textContent = "Tersimpan ke basis data lokal";
+        } catch (err) {
+          notifSaveState.textContent =
+            "Gagal memuat dari server — periksa koneksi backend";
+        }
+      }
+      loadSettingsFromServer();
+      autoConnect();
+    </script>
+  </body>
+</html>
